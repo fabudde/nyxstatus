@@ -1,0 +1,382 @@
+use nodemailer
+
+env {
+  SMTP_HOST default="localhost"
+  SMTP_PORT default="587"
+  SMTP_FROM default="alerts@nyxstatus.com"
+}
+
+theme {
+  colors {
+    primary #00e5a0
+    bg #0a0a0f
+    text #e8e8f0
+    muted #6b6b80
+    surface #12121a
+    border #1a1a28
+  }
+  fonts {
+    body Inter, source: google
+  }
+  body {
+    bg #0a0a0f
+    c #e8e8f0
+  }
+  selection {
+    bg rgba(0,229,160,0.3)
+  }
+  defaults {
+    input {
+      w 100%
+      p 0.75rem 1rem
+      bg rgba(255,255,255,0.06)
+      border 1px solid color.border
+      r 8px
+      c color.text
+      fs 0.95rem
+      outline none
+      tr border 0.2s, box-shadow 0.2s
+      mb 1rem
+    }
+    input:focus {
+      bc color.primary
+      shadow 0 0 0 3px rgba(0,229,160,0.15)
+    }
+    input::placeholder {
+      c color.muted
+    }
+  }
+}
+
+preset card {
+  bg color.surface
+  r 12px
+  p 2rem
+  border 1px solid color.border
+}
+
+preset btn-primary {
+  d inline-block
+  bg color.primary
+  c color.bg
+  py 0.75rem
+  px 2rem
+  r 10px
+  fw 700
+  td none
+  fs 1rem
+}
+
+preset btn-delete {
+  bg none
+  border 1px solid rgba(255,71,87,0.3)
+  c #ff4757
+  py 0.35rem
+  px 0.75rem
+  r 6px
+  cur pointer
+  fs 0.8rem
+}
+
+preset gradient-text {
+  bg linear-gradient(135deg, color.text 0%, color.primary 100%)
+  -webkit-background-clip text
+  -webkit-text-fill-color transparent
+  background-clip text
+}
+
+preset monitor-row {
+  bg color.surface
+  r 12px
+  p 1.25rem
+  border 1px solid color.border
+  tr background 0.15s
+  mb 1rem
+  cur pointer
+}
+
+preset check-row {
+  d flex
+  justify-content space-between
+  align-items center
+  py 0.6rem
+  border-bottom 1px solid rgba(255,255,255,0.06)
+}
+
+meta {
+  title "NyxStatus - Uptime Monitoring"
+}
+
+table users {
+  email email required unique
+  password text required
+  org_name text default="My Org"
+}
+
+table monitors {
+  name text required
+  url text required
+  type text default="https"
+  interval_seconds number default=60
+  status text default="unknown"
+  last_check auto
+  avg_response_ms number default=0
+  user_id [users]
+}
+
+table alerts {
+  monitor_id [monitors]
+  user_id [users]
+  type text default="email"
+  target text
+  enabled integer default=1
+  created_at datetime default=now
+}
+
+table checks {
+  monitor_id [monitors]
+  status text
+  response_ms number
+  status_code number
+  error_msg text
+  created_at datetime default=now
+}
+
+security {
+  table users
+  login email password
+  token jwt
+  protect /api/monitors all
+  protect /api/checks all
+}
+
+api GET /api/monitors/mine auth {
+  query "SELECT * FROM monitors WHERE user_id = $req.user.id ORDER BY id DESC"
+}
+
+api POST /api/alerts/delete auth {
+  query "DELETE FROM alerts WHERE id = $id AND user_id = $req.user.id"
+}
+
+api GET /api/monitors/:id/checks {
+  query "SELECT id, status, response_ms, status_code, error_msg, created_at FROM checks WHERE monitor_id = $req.params.id ORDER BY id DESC LIMIT 100"
+}
+
+api POST /api/monitors/:id/alerts auth {
+  query "INSERT INTO alerts (monitor_id, user_id, type, target) VALUES ($req.params.id, $req.user.id, 'email', $req.body.target)"
+}
+
+api GET /api/monitors/:id/alerts auth {
+  query "SELECT * FROM alerts WHERE monitor_id = $req.params.id AND user_id = $req.user.id"
+}
+
+api DELETE /api/alerts/:id auth {
+  query "DELETE FROM alerts WHERE id = $req.params.id AND user_id = $req.user.id"
+}
+
+api POST /api/monitors/delete auth {
+  query "DELETE FROM checks WHERE monitor_id = $id"
+  query "DELETE FROM alerts WHERE monitor_id = $id"
+  query "DELETE FROM monitors WHERE id = $id AND user_id = $req.user.id"
+}
+
+every 60s 'health-check' {
+  query "SELECT id, url FROM monitors WHERE COALESCE(status, 'unknown') != 'paused'"
+  query "fetch $row.url"
+}
+
+every 1h 'cleanup-old-checks' {
+  query "DELETE FROM checks WHERE created_at < datetime('now', '-30 days')"
+}
+
+layout {
+  nav burger brand="NyxStatus" style="bg: rgba(10,10,15,0.92); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.06)" {
+    a "Login" href="/login" visible=guest
+    a "Sign Up" href="/register" preset=btn-primary style="py: 0.5rem; px: 1.25rem; fs: 0.9rem" visible=guest
+    a "Dashboard" href="/dashboard" visible=auth
+    a "Logout" href="#" visible=auth style="cursor: pointer" on:click -> localStorage.removeItem('token');location.href='/login'
+  }
+  slot
+  footer style="ta: center; py: 2rem; c: color.muted; border-top: 1px solid color.border; fs: 0.85rem" {
+    p "Built with NyxCode 🦞"
+  }
+}
+
+page / {
+  section style="ta: center; py: 8rem; px: 2rem; mw: 900px; mx: auto" {
+    h1 "Know Before Your Users Do." preset=gradient-text style="fs: clamp(2.5rem, 6vw, 4rem); lh: 1.1; mb: 1.5rem; fw: 800"
+    p "Monitor your APIs, websites, and services. Instant alerts when things go wrong." style="fs: 1.25rem; c: color.muted; lh: 1.7; mw: 620px; mx: auto; mb: 2.5rem"
+    a "Start Free" href="/register" preset=btn-primary
+  }
+}
+
+page /login {
+  section style="mw: 400px; mx: auto; py: 8rem; px: 2rem" {
+    h2 "Welcome Back" style="ta: center; mb: 2rem; fw: 700"
+    div preset=card {
+      form /api/auth/login {
+        label "Email" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input email placeholder="you@company.com"
+        label "Password" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input password placeholder="Password"
+        submit "Sign In" preset=btn-primary style="w: 100%; mt: 0.5rem"
+        success -> redirect /dashboard
+      }
+      p style="ta: center; mt: 1.5rem; fs: 0.9rem" {
+        span "No account? " style="c: color.muted"
+        a "Sign up" href="/register" style="c: color.primary; td: none"
+      }
+    }
+  }
+}
+
+page /register {
+  section style="mw: 400px; mx: auto; py: 8rem; px: 2rem" {
+    h2 "Get Started Free" style="ta: center; mb: 2rem; fw: 700"
+    div preset=card {
+      form /api/auth/register {
+        label "Organization" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input org_name placeholder="Organization name"
+        label "Email" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input email placeholder="you@company.com"
+        label "Password" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input password placeholder="Password (min. 8 chars)"
+        submit "Create Account" preset=btn-primary style="w: 100%; mt: 0.5rem"
+        success -> redirect /dashboard
+      }
+      p style="ta: center; mt: 1.5rem; fs: 0.9rem" {
+        span "Have an account? " style="c: color.muted"
+        a "Sign in" href="/login" style="c: color.primary; td: none"
+      }
+    }
+  }
+}
+
+page /dashboard auth {
+  data monitors = get /api/monitors/mine auth {
+    loading -> { div style="ta: center; py: 4rem" { p "Loading monitors..." style="c: color.muted" } }
+    empty -> { div style="ta: center; py: 4rem" {
+      p "No monitors yet" style="c: color.muted; fs: 1.2rem; mb: 1rem"
+      a "+ Add your first monitor" href="/dashboard/new" preset=btn-primary
+    } }
+  }
+
+  section style="mw: 1100px; mx: auto; py: 3rem; px: 2rem" {
+    div flex=row between center style="mb: 2.5rem" {
+      h1 "Dashboard" style="fs: 1.8rem; fw: 700"
+      a "+ Add Monitor" href="/dashboard/new" preset=btn-primary style="fs: 0.9rem; py: 0.6rem; px: 1.25rem"
+    }
+
+    each monitors -> monitor {
+      a href="/dashboard/monitor/?id=.id" preset=monitor-row style="d: block; td: none; c: inherit" {
+        div flex=row between center {
+          div flex=row center gap=0.75rem {
+            span .status style="fw: 700; fs: 0.85rem; tt: uppercase; px: 0.5rem; py: 0.15rem; r: 4px; bg: rgba(0,229,160,0.15); c: #00e5a0"
+            div {
+              p .name style="fw: 600; fs: 1.05rem"
+              p .url style="c: color.muted; fs: 0.8rem; mt: 0.15rem"
+            }
+          }
+          div style="ta: right" {
+            p .avg_response_ms style="fw: 600; fs: 1rem"
+            p .last_check style="c: color.muted; fs: 0.75rem; mt: 0.15rem"
+          }
+        }
+      }
+    }
+  }
+}
+
+page /dashboard/new auth {
+  section style="mw: 600px; mx: auto; py: 3rem; px: 2rem" {
+    a "← Back" href="/dashboard" style="c: color.muted; fs: 0.85rem; mb: 1.5rem; d: inline-block"
+    h1 "Add Monitor" style="fs: 1.8rem; fw: 700; mb: 2rem"
+    div preset=card {
+      form /api/monitors auth {
+        label "Name" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input name placeholder="e.g. My API"
+        label "URL" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input url placeholder="https://api.example.com/health"
+        label "Check Interval (seconds)" style="fs: 0.9rem; c: color.muted; mb: 0.25rem; d: block"
+        input interval_seconds placeholder="60"
+        submit "Create Monitor" preset=btn-primary style="w: 100%"
+        success -> redirect /dashboard
+      }
+    }
+  }
+}
+
+page /dashboard/monitor auth {
+  data monitor = get "/api/monitors/$param.id" auth {
+    loading -> p "Loading..."
+    error -> { p "Monitor not found" style="c: #ff4757" }
+  }
+  data checks = get "/api/monitors/$param.id/checks" auth
+  data alerts = get "/api/monitors/$param.id/alerts" auth
+
+  section style="mw: 900px; mx: auto; py: 3rem; px: 2rem" {
+    a "← Back" href="/dashboard" style="c: color.muted; fs: 0.85rem; mb: 2rem; d: inline-block"
+
+    each monitor -> m {
+      div preset=card style="mb: 2rem" {
+        div flex=row between center style="mb: 1.5rem" {
+          div {
+            h1 .name style="fs: 1.6rem; fw: 700; mb: 0.25rem"
+            p .url style="c: color.muted; fs: 0.9rem"
+          }
+          span .status style="fw: 700; fs: 1rem; tt: uppercase; c: #00e5a0"
+        }
+        div flex=row gap=2rem {
+          div {
+            p "Response" style="c: color.muted; fs: 0.75rem; tt: uppercase; ls: 0.05em; mb: 0.25rem"
+            p .avg_response_ms style="fw: 600; fs: 1.2rem"
+          }
+          div {
+            p "Interval" style="c: color.muted; fs: 0.75rem; tt: uppercase; ls: 0.05em; mb: 0.25rem"
+            p .interval_seconds style="fw: 600; fs: 1.2rem"
+          }
+        }
+        div style="mt: 1.5rem; pt: 1.5rem; bt: 1px solid color.border" {
+          form "/api/monitors/delete" auth {
+            input id hidden value=.id
+            submit "Delete Monitor" preset=btn-delete style="py: 0.5rem; px: 1rem"
+            success -> redirect /dashboard
+          }
+        }
+      }
+    }
+
+    h2 "Email Alerts" style="fs: 1.1rem; fw: 600; mb: 1rem"
+    div preset=card style="mb: 2rem; p: 1.5rem" {
+      each alerts -> alert {
+        div flex=row between center style="py: 0.5rem; border-bottom: 1px solid color.border" {
+          div flex=row center gap=0.5rem {
+            span "📧"
+            span .target style="fs: 0.9rem"
+          }
+          form "/api/alerts/delete" auth {
+            input id hidden value=.id
+            submit "✕" preset=btn-delete style="py: 0.25rem; px: 0.5rem"
+            success -> reload
+          }
+        }
+      }
+      form "/api/monitors/$param.id/alerts" auth {
+        input target placeholder="you@example.com" style="mb: 0.5rem"
+        submit "Add Alert" preset=btn-primary style="py: 0.65rem; px: 1.25rem"
+        success -> reload
+      }
+    }
+
+    h2 "Recent Checks" style="fs: 1.1rem; fw: 600; mb: 1rem"
+    div preset=card style="p: 1.5rem" {
+      each checks -> check {
+        div preset=check-row {
+          span .status_code style="fw: 700; fs: 0.85rem"
+          span .response_ms style="fw: 600"
+          span .created_at style="c: color.muted; fs: 0.8rem"
+        }
+      }
+    }
+  }
+}
