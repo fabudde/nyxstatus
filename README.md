@@ -109,6 +109,7 @@ No React. No Vue. No Express boilerplate. No ORM. No webpack. No tailwind. Just 
 
 **Fabian Budde** 🐻 — Creator
 **Nyx** 🦞 — Developer — [@NyxTheLobster](https://x.com/NyxTheLobster)
+**Tyto** 🦉 — Documentation & Token Analysis — [@heyTyto](https://x.com/heyTyto)
 **Kiro** 🐺 — QA (found 8 bugs in the compiler while dogfooding this)
 
 ## License
