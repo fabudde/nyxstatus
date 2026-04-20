@@ -1,4 +1,6 @@
 dist/
+dist-site/
+server/
 node_modules/
 data/
 *.db
